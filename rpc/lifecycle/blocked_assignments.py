@@ -138,14 +138,19 @@ def get_block_reasons(rfc: RfcToBe) -> set[str]:
             reasons.add(BlockingReason.LABEL_IANA_HOLD)
         if rfc.labels.filter(slug__in=["Tools Issue"]).exists():
             reasons.add(BlockingReason.TOOLS_ISSUE)
-        # any document this draft normatively references has not been published
+        # any document this draft normatively references is not ready for publication
         refqueue_qs = rfc.rpcrelateddocument_set.filter(relationship="refqueue")
         if refqueue_qs.exists():
             for ref in refqueue_qs:
-                incomplete_publish_qs = (
-                    ref.target_rfctobe.incomplete_activities().filter(slug="publisher")
+                # block if publisher has no done or active assignment
+                publisher_qs = ref.target_rfctobe.assignment_set.filter(
+                    role__slug="publisher"
                 )
-                if incomplete_publish_qs.exists():
+                publisher_done_or_active = (
+                    publisher_qs.active()
+                    | publisher_qs.filter(state=Assignment.State.DONE)
+                ).exists()
+                if not publisher_done_or_active:
                     reasons.add(BlockingReason.REFQUEUE_PUBLISH_INCOMPLETE)
         if rfc.finalapproval_set.active().exists():
             reasons.add(BlockingReason.FINAL_APPROVAL_PENDING)
