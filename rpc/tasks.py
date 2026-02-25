@@ -6,6 +6,7 @@ from django.db.models import F
 from utils.task_utils import RetryTask
 
 from .lifecycle.metadata import Metadata
+from .lifecycle.notifications import process_rfctobe_changes_for_queue
 from .lifecycle.publication import (
     PublicationError,
     TemporaryPublicationError,
@@ -153,6 +154,17 @@ class PublishRfcToBeTask(RetryTask):
 def publish_rfctobe_task(self, rfctobe_id, expected_head):
     rfctobe = RfcToBe.objects.get(pk=rfctobe_id)
     publish_rfctobe(rfctobe, expected_head=expected_head)
+
+
+@shared_task
+def process_rfctobe_changes_for_queue_task():
+    """
+    Celery task to check for changes to in-progress RFCs and send notifications.
+    """
+    try:
+        process_rfctobe_changes_for_queue()
+    except Exception as e:
+        logger.error(f"Error in process_rfctobe_changes_for_queue_task: {e}")
 
 
 @shared_task(bind=True)
