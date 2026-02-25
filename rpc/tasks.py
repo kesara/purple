@@ -13,6 +13,7 @@ from .lifecycle.publication import (
 )
 from .lifecycle.repo import GithubRepository
 from .models import MailMessage, MetadataValidationResults, RfcToBe
+from .rfcindex import createRfcTxtIndex
 
 logger = get_task_logger(__name__)
 
@@ -152,3 +153,8 @@ class PublishRfcToBeTask(RetryTask):
 def publish_rfctobe_task(self, rfctobe_id, expected_head):
     rfctobe = RfcToBe.objects.get(pk=rfctobe_id)
     publish_rfctobe(rfctobe, expected_head=expected_head)
+
+
+@shared_task(bind=True)
+def create_index(self):
+    createRfcTxtIndex()
