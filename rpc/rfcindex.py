@@ -2,6 +2,8 @@
 from itertools import chain
 from operator import attrgetter
 from textwrap import fill
+from xml.dom.minidom import parseString
+from xml.etree import ElementTree
 
 from celery.utils.log import get_task_logger
 from django.conf import settings
@@ -9,7 +11,7 @@ from django.db.models import F
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .models import RfcToBe, UnusableRfcNumber
+from .models import RfcToBe, SubseriesMember, UnusableRfcNumber
 
 logger = get_task_logger(__name__)
 
@@ -103,9 +105,88 @@ def get_rfc_text_index_entries():
     return entries
 
 
+def load_bcp_xml_index_entries(rfc_index):
+    """Load BCP entries for rfc-index.xml"""
+    entries = []
+
+    published_bcps = (
+        SubseriesMember.objects.filter(type_id="bcp").order_by("number").distinct()
+    )
+
+    for bcp in published_bcps:
+        entry = ElementTree.SubElement(rfc_index, "bcp-entry")
+        ElementTree.SubElement(entry, "doc-id").text = f"BCP{bcp.number:04d}"
+        is_also = ElementTree.SubElement(entry, "is-also")
+
+        for bcp_entry in SubseriesMember.objects.filter(
+            type_id="bcp", number=bcp.number
+        ):
+            ElementTree.SubElement(
+                is_also, "doc-id"
+            ).text = f"RFC{bcp_entry.rfc_to_be_id:04d}"
+
+        entries.append(entry)
+
+
+def load_fyi_xml_index_entries(rfc_index):
+    """Returns FYI entries for rfc-index.xml"""
+    entries = []
+
+    published_fyis = (
+        SubseriesMember.objects.filter(type_id="fyi").order_by("number").distinct()
+    )
+
+    for fyi in published_fyis:
+        entry = ElementTree.SubElement(rfc_index, "fyi-entry")
+        ElementTree.SubElement(entry, "doc-id").text = f"FYI{fyi.number:04d}"
+        is_also = ElementTree.SubElement(entry, "is-also")
+
+        for fyi_entry in SubseriesMember.objects.filter(
+            type_id="fyi", number=fyi.number
+        ):
+            ElementTree.SubElement(
+                is_also, "doc-id"
+            ).text = f"RFC{fyi_entry.rfc_to_be_id:04d}"
+
+        entries.append(entry)
+
+
+def load_std_xml_index_entries(rfc_index):
+    """Load std entries for rfc-index.xml"""
+    entries = []
+
+    published_stds = (
+        SubseriesMember.objects.filter(type_id="std").order_by("number").distinct()
+    )
+
+    for std in published_stds:
+        entry = ElementTree.SubElement(rfc_index, "std-entry")
+        ElementTree.SubElement(entry, "doc-id").text = f"STD{std.number:04d}"
+        is_also = ElementTree.SubElement(entry, "is-also")
+
+        for std_entry in SubseriesMember.objects.filter(
+            type_id="std", number=std.number
+        ):
+            ElementTree.SubElement(
+                is_also, "doc-id"
+            ).text = f"RFC{std_entry.rfc_to_be_id:04d}"
+
+        entries.append(entry)
+
+
+def load_rfc_not_be_xml_index_entries(rfc_index):
+    """Load unusable RFC entries for rfc-index.xml"""
+    entries = []
+
+    for record in UnusableRfcNumber.objects.order_by("number"):
+        entry = ElementTree.SubElement(rfc_index, "rfc-not-issued-entry")
+        ElementTree.SubElement(entry, "doc-id").text = f"RFC{record.number:04d}"
+        entries.append(entry)
+
+
 def createRfcTxtIndex():
     """
-    Create index of published documents
+    Create text index of published documents
     """
     DATE_FMT = "%m/%d/%Y"
     created_on = timezone.now().strftime(DATE_FMT)
@@ -119,3 +200,33 @@ def createRfcTxtIndex():
     )
     print(index)  # TODO: Write to a blob store
     logger.info("Created rfc-index.txt")
+
+
+def createRfcXmlIndex():
+    """
+    Create XML index of published documents
+    """
+    logger.info("Creating rfc-index.xml")
+    rfc_index = ElementTree.Element(
+        "rfc-index",
+        attrib={
+            "xmlns": "https://www.rfc-editor.org/rfc-index",
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": (
+                "https://www.rfc-editor.org/rfc-index "
+                "https://www.rfc-editor.org/rfc-index.xsd"
+            ),
+        },
+    )
+
+    # load data
+    load_bcp_xml_index_entries(rfc_index)
+    load_fyi_xml_index_entries(rfc_index)
+    load_rfc_not_be_xml_index_entries(rfc_index)
+    load_std_xml_index_entries(rfc_index)
+
+    # make it pretty
+    rough_index = parseString(ElementTree.tostring(rfc_index, encoding="UTF-8"))
+    pretty_index = rough_index.toprettyxml(indent=" " * 4, encoding="UTF-8")
+    print(pretty_index.decode())  # TODO: Write to a blob store
+    logger.info("Created rfc-index.xml")
