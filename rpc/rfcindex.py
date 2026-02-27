@@ -109,21 +109,24 @@ def load_bcp_xml_index_entries(rfc_index):
     """Load BCP entries for rfc-index.xml"""
     entries = []
 
-    published_bcps = (
-        SubseriesMember.objects.filter(type_id="bcp").order_by("number").distinct()
+    highest_bcp_number = (
+        SubseriesMember.objects.filter(type_id="bcp").order_by("-number").first().number
     )
 
-    for bcp in published_bcps:
+    for bcp_number in range(1, highest_bcp_number):
         entry = ElementTree.SubElement(rfc_index, "bcp-entry")
-        ElementTree.SubElement(entry, "doc-id").text = f"BCP{bcp.number:04d}"
-        is_also = ElementTree.SubElement(entry, "is-also")
+        ElementTree.SubElement(entry, "doc-id").text = f"BCP{bcp_number:04d}"
 
-        for bcp_entry in SubseriesMember.objects.filter(
-            type_id="bcp", number=bcp.number
-        ):
-            ElementTree.SubElement(
-                is_also, "doc-id"
-            ).text = f"RFC{bcp_entry.rfc_to_be_id:04d}"
+        subseries_members = SubseriesMember.objects.filter(
+            type_id="bcp", number=bcp_number
+        )
+        if subseries_members:
+            is_also = ElementTree.SubElement(entry, "is-also")
+
+            for bcp_entry in subseries_members:
+                ElementTree.SubElement(
+                    is_also, "doc-id"
+                ).text = f"RFC{bcp_entry.rfc_to_be_id:04d}"
 
         entries.append(entry)
 
